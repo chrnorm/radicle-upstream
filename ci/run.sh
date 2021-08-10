@@ -23,6 +23,7 @@ export YARN_CACHE_FOLDER="$CACHE_FOLDER/yarn"
 export CARGO_HOME="$CACHE_FOLDER/cargo"
 export CYPRESS_CACHE_FOLDER="$CACHE_FOLDER/cypress"
 export PATH="$HOME/.cargo/bin:$PATH"
+export RUST_LOG="info,quinn=warn,librad=debug,radicle_daemon=debug,api=debug"
 
 log-group-start "Installing yarn dependencies"
 yarn install --immutable
@@ -61,46 +62,46 @@ cp .buildkite/.gitconfig "$HOME/"
 cat "$HOME/.gitconfig"
 log-group-end
 
-log-group-start "License compliance"
-time ./scripts/license-header.ts check
-time cargo deny check
-log-group-end
+# log-group-start "License compliance"
+# time ./scripts/license-header.ts check
+# time cargo deny check
+# log-group-end
 
-log-group-start "Run proxy fmt"
-time cargo fmt --all -- --check
-log-group-end
+# log-group-start "Run proxy fmt"
+# time cargo fmt --all -- --check
+# log-group-end
 
-log-group-start "Run proxy lints"
-time cargo clippy --all --all-targets -- --deny warnings
-time cargo clippy --all --all-targets --all-features -- --deny warnings
-log-group-end
+# log-group-start "Run proxy lints"
+# time cargo clippy --all --all-targets -- --deny warnings
+# time cargo clippy --all --all-targets --all-features -- --deny warnings
+# log-group-end
 
-log-group-start "Run proxy docs"
-(
-  export RUSTDOCFLAGS="-D broken-intra-doc-links"
-  time cargo doc --workspace --no-deps --all-features --document-private-items
-)
-log-group-end
+# log-group-start "Run proxy docs"
+# (
+#   export RUSTDOCFLAGS="-D broken-intra-doc-links"
+#   time cargo doc --workspace --no-deps --all-features --document-private-items
+# )
+# log-group-end
 
-log-group-start "Run app eslint checks"
-time yarn lint
-log-group-end
+# log-group-start "Run app eslint checks"
+# time yarn lint
+# log-group-end
 
-log-group-start "Run app prettier checks"
-time yarn prettier:check
-log-group-end
+# log-group-start "Run app prettier checks"
+# time yarn prettier:check
+# log-group-end
 
-log-group-start "Check TypeScript"
-time yarn typescript:check
-log-group-end
+# log-group-start "Check TypeScript"
+# time yarn typescript:check
+# log-group-end
 
-log-group-start "Run proxy tests"
-(
-  export RUST_TEST_TIME_UNIT=2000,4000
-  export RUST_TEST_TIME_INTEGRATION=2000,8000
-  timeout 6m cargo test --all --all-features --all-targets -- -Z unstable-options --report-time
-)
-log-group-end
+# log-group-start "Run proxy tests"
+# (
+#   export RUST_TEST_TIME_UNIT=2000,4000
+#   export RUST_TEST_TIME_INTEGRATION=2000,8000
+#   timeout 6m cargo test --all --all-features --all-targets -- -Z unstable-options --report-time
+# )
+# log-group-end
 
 log-group-start "Bundle electron main files"
 time yarn run webpack --config-name main
