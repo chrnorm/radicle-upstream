@@ -439,7 +439,7 @@ export async function resolveProjectAnchors(
       try {
         const project = await proxy.client.project.get(anchor.projectId);
         anchoredProjects.push({ ...project, anchor });
-      } catch (error) {
+      } catch (_error: unknown) {
         // TODO: only catch when backend can't find project, reraise other errors
         unresolvedAnchors.push(anchor);
       }
@@ -527,7 +527,7 @@ async function getClaimedIdentity(
   let identity;
   try {
     identity = await proxy.client.remoteIdentityGet(urn);
-  } catch (error) {
+  } catch (error: unknown) {
     if (error instanceof proxy.ResponseError && error.response.status === 404) {
       return undefined;
     }

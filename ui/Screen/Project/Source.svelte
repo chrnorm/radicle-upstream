@@ -118,11 +118,11 @@
             },
           ],
         });
-      } catch (err) {
+      } catch (err: unknown) {
         error.show(
           new error.Error({
             code: error.Code.ProjectCheckoutFailure,
-            message: `Checkout failed: ${err.message}`,
+            message: `Checkout failed`,
             source: err,
           })
         );

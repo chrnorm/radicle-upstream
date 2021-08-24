@@ -78,8 +78,13 @@ async function updateAccountBalances(
     if (result) {
       accountBalancesStore.set(result);
     }
-  } catch (err) {
-    error.show(err);
+  } catch (err: unknown) {
+    error.show(
+      new error.Error({
+        message: "Failed to get account balances",
+        source: err,
+      })
+    );
   }
 }
 
@@ -134,15 +139,14 @@ function build(
       if (!connected) {
         stateStore.set({ status: Status.NotConnected });
       }
-    } catch (e) {
-      stateStore.set({ status: Status.NotConnected, error: e });
+    } catch (unknownErr: unknown) {
+      const err = error.fromUnknown(unknownErr);
+      stateStore.set({ status: Status.NotConnected, error: err });
       error.show(
         new error.Error({
           code: error.Code.WalletConnectionFailure,
-          message: `Failed to connect wallet: ${e
-            .toString()
-            .replace("Error: ", "")}`,
-          source: error.fromJsError(e),
+          message: `Failed to connect wallet: ${err.message}`,
+          source: err,
         })
       );
       return;
