@@ -6,6 +6,7 @@
  LICENSE file.
 -->
 <script lang="typescript">
+  import * as configureEns from "ui/src/org/configureEns";
   import * as ensResolver from "ui/src/org/ensResolver";
   import * as error from "ui/src/error";
   import * as modal from "ui/src/modal";
@@ -86,15 +87,19 @@
       });
 
       let tx: transaction.ContractTransaction | undefined = undefined;
+      let waitingForTxNotification;
+
       try {
         tx = await ensResolver.setRecords(
           registration.domain,
           records as ensResolver.EnsRecord[]
         );
         transaction.add(transaction.updateEnsMetadata(tx));
-        notification.info({
-          message: "Org’s metadata has been updated",
+        waitingForTxNotification = notification.info({
+          message:
+            "The org’s updated metadata will appear once the transaction has been included",
           showIcon: true,
+          persist: true,
         });
         onSubmit();
       } catch (err) {
@@ -111,7 +116,12 @@
       }
 
       await tx.wait(1);
-      // TODO: yank the metadata cache for this org and let the user know.
+      waitingForTxNotification.remove();
+
+      await configureEns.updateScreenAndNotifyUser(
+        orgAddress,
+        "Your org’s metadata has been updated"
+      );
     } else {
       onSubmit();
     }
