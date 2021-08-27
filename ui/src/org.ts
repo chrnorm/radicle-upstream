@@ -16,6 +16,7 @@ import * as Contract from "./org/contract";
 
 import { claimsAddress, ClaimsContract } from "./attestation/contract";
 import { identitySha1Urn } from "ui/src/urn";
+import { isCypressTestEnv } from "ui/src/config";
 import { memoizeLru } from "ui/src/memoizeLru";
 import { sleep } from "ui/src/sleep";
 import { unreachable } from "ui/src/unreachable";
@@ -92,7 +93,9 @@ const updateOrgsForever = async (): Promise<never> => {
 // Start a background task that continously updates the org data for
 // the sidebar.
 export function initialize(): void {
-  updateOrgsForever();
+  if (!isCypressTestEnv) {
+    updateOrgsForever();
+  }
 }
 
 export function openOnGnosisSafe(

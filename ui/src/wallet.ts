@@ -20,7 +20,7 @@ import {
 } from "ui/src/ethereum/environment";
 import { WalletConnectSigner } from "ui/src/ethereum/walletConnectSigner";
 import * as ethereumDebug from "ui/src/ethereum/debug";
-import { createWalletConnect } from "ui/src/ethereum/walletConnect";
+import { createWalletConnect, QrDisplay } from "ui/src/ethereum/walletConnect";
 import { INFURA_API_KEY_MAINNET, INFURA_API_KEY_RINKEBY } from "ui/src/config";
 
 export { radToken };
@@ -45,7 +45,7 @@ export interface Connected {
 
 export interface Wallet extends svelteStore.Readable<State> {
   environment: Environment;
-  connect(): Promise<void>;
+  connect(qrDisplay: QrDisplay): Promise<void>;
   disconnect(): Promise<void>;
   provider: Provider;
   signer: WalletConnectSigner;
@@ -83,7 +83,12 @@ async function updateAccountBalances(
       accountBalancesStore.set(result);
     }
   } catch (err) {
-    error.show(err);
+    error.show(
+      new error.Error({
+        message: "Failed to get account balances",
+        source: err,
+      })
+    );
   }
 }
 
@@ -113,7 +118,7 @@ function build(environment: Environment, provider: Provider): Wallet {
     status: Status.NotConnected,
   });
 
-  const signer = new WalletConnectSigner(walletConnect, provider, environment);
+  const signer = new WalletConnectSigner(walletConnect, provider);
 
   const unsubscribeStateStore = stateStore.subscribe(state => {
     if (state.status === Status.Connected) {
@@ -122,14 +127,14 @@ function build(environment: Environment, provider: Provider): Wallet {
   });
 
   // Connect to a wallet using walletconnect
-  async function connect() {
+  async function connect(qrDisplay: QrDisplay) {
     if (svelteStore.get(stateStore).status !== Status.NotConnected) {
       throw new Error("A wallet is already connected");
     }
 
     try {
       stateStore.set({ status: Status.Connecting });
-      const connected = await walletConnect.connect();
+      const connected = await walletConnect.connect(qrDisplay);
       // If we connect succesfully, `stateStore` is updated by the
       // `connection` subscription.
       if (!connected) {

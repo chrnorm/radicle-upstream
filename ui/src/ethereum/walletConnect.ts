@@ -14,9 +14,12 @@ import { isEqual } from "lodash";
 import * as ethers from "ethers";
 
 import * as Error from "ui/src/error";
-import * as modal from "ui/src/modal";
-import ModalWalletQRCode from "ui/Modal/Wallet/QRCode.svelte";
-import { config, INFURA_API_KEY_RINKEBY } from "ui/src/config";
+import {
+  config,
+  isCypressTestEnv,
+  INFURA_API_KEY_RINKEBY,
+} from "ui/src/config";
+import * as bacon from "ui/src/bacon";
 
 // Data provided by a connected wallet
 export interface Connection {
@@ -24,16 +27,24 @@ export interface Connection {
   chainId: number;
 }
 
+// Interface for showing the WalletConnect connection URL.
+//
+// The `abort` callback allows the user to abort the connection
+// process.
+export interface QrDisplay {
+  show: (uri: string, abort: () => void) => void;
+}
+
 export interface WalletConnect {
   // Holds the connection state. This is updated whenever a wallet
   // connects or disconnects or updates its parameters.
   connection: svelteStore.Readable<Connection | undefined>;
 
-  // Start the connection flow by showing the modal with the connection
-  // data. Returns `true` if the connection has been succesfully
-  // established and `false` if the user closed the modal without
-  // connecting.
-  connect(): Promise<boolean>;
+  // Start the connection flow by calling `show` on `qrDisplay` to
+  // display the session URI. Returns `true` if the connection has been
+  // succesfully established and `false` if `qrDisplay` called the
+  // `abort` callback.
+  connect(qrDisplay: QrDisplay): Promise<boolean>;
 
   disconnect(): Promise<void>;
 
@@ -58,8 +69,13 @@ export interface WalletConnect {
 // Create a `WalletConnect` instance. Creates a test instance when
 // running in Cypress.
 export function createWalletConnect(): WalletConnect {
-  if (config.isDev && config.testWalletMnemonic) {
-    return new TestClient(config.testWalletMnemonic);
+  if (isCypressTestEnv) {
+    return new TestClient(
+      "image napkin cruise dentist name plunge crisp muscle nest floor vessel blush",
+      1
+    );
+  } else if (config.isDev && config.testWalletMnemonic) {
+    return new TestClient(config.testWalletMnemonic, 4);
   } else {
     return new WalletConnectClient();
   }
@@ -70,6 +86,10 @@ export class WalletConnectClient implements WalletConnect {
   // Mutex to synchronize connection and disconnection.
   private connectionMutex = new Mutex();
   private _connection = svelteStore.writable<Connection | undefined>(undefined);
+  private qrDisplayRequest = new bacon.Bus<{
+    uri: string;
+    onClose: () => void;
+  }>();
 
   public connection: svelteStore.Readable<Connection | undefined>;
 
@@ -87,8 +107,11 @@ export class WalletConnectClient implements WalletConnect {
     }
   }
 
-  async connect(): Promise<boolean> {
+  async connect(qrDisplay: QrDisplay): Promise<boolean> {
     return tryRunExclusive(this.connectionMutex, async () => {
+      this.qrDisplayRequest.first().onValue(({ uri, onClose }) => {
+        qrDisplay.show(uri, onClose);
+      });
       try {
         const sessionStatus = await this.connector.connect();
         this.setConnection(sessionStatus);
@@ -140,7 +163,28 @@ export class WalletConnectClient implements WalletConnect {
   // and
   // https://github.com/WalletConnect/walletconnect-monorepo/pull/370#issuecomment-776038638
   private reinit() {
-    this.connector = createConnector();
+    this.connector = new Connector({
+      bridge: "https://bridge.walletconnect.org",
+      qrcodeModal: {
+        open: (uri: string, onClose, _opts?: unknown) => {
+          this.qrDisplayRequest.push({ uri, onClose });
+        },
+        close: () => {},
+      },
+    });
+
+    const clientMeta = {
+      name: "Radicle Upstream",
+      description: "Desktop client for Radicle",
+      url: "http://radicle.xyz",
+      icons: ["https://radicle.xyz/img/radicle-walletconnect-icon.png"],
+    };
+
+    // @ts-expect-error: Electron owerwrites window APIs, which means that when
+    // setting `clientMeta` via the Connector params they get overwritten and
+    // return `undefined`.
+    this.connector._clientMeta = clientMeta;
+
     // We should remove the event listeners from the previous
     // instance but WalletConnect does not yet support this.
     //
@@ -176,74 +220,43 @@ export class WalletConnectClient implements WalletConnect {
   }
 }
 
-function createConnector(): Connector {
-  // This is set to true if the WalletConnect code closes the modal
-  // instead of the user. This prevents calling back into WalletConnect
-  // with `onClose` and aborting the connection.
-  let modalClosedByWalletConnect = false;
-
-  const connector = new Connector({
-    bridge: "https://bridge.walletconnect.org",
-    qrcodeModal: {
-      open: (uri: string, onClose, _opts?: unknown) => {
-        modal.toggle(
-          ModalWalletQRCode,
-          () => {
-            if (!modalClosedByWalletConnect) {
-              onClose();
-            }
-          },
-          {
-            uri,
-          }
-        );
-      },
-      close: () => {
-        modalClosedByWalletConnect = true;
-        modal.hide();
-      },
-    },
-  });
-
-  const clientMeta = {
-    name: "Radicle Upstream",
-    description: "Desktop client for Radicle",
-    url: "http://radicle.xyz",
-    icons: ["https://radicle.xyz/img/radicle-walletconnect-icon.png"],
-  };
-
-  // @ts-expect-error: Electron owerwrites window APIs, which means that when
-  // setting `clientMeta` via the Connector params they get overwritten and
-  // return `undefined`.
-  connector._clientMeta = clientMeta;
-
-  return connector;
-}
-
 // WalletConnect test client that is backed by an in-memory wallet and
 // automatically signs and submits transactions without user
 // interaction.
 export class TestClient implements WalletConnect {
   private _connection: svelteStore.Writable<Connection | undefined> =
     svelteStore.writable(undefined);
+  private chainId: number;
   private wallet: ethers.Wallet;
   private provider: ethers.providers.Provider;
 
   public connection: svelteStore.Readable<Connection | undefined>;
 
-  constructor(mnemonic: string) {
+  // Create a new `TestClient`.
+  //
+  // If `chain` id is 1 (i.e. mainnet) then we submit transactions to a
+  // local node. Otherwise, we submit transaction to the Rinkeby
+  // testnet.
+  constructor(mnemonic: string, chainId: number) {
     this.connection = svelteStore.derived(this._connection, x => x);
     this.wallet = ethers.Wallet.fromMnemonic(mnemonic);
-    this.provider = ethers.providers.InfuraProvider.getWebSocketProvider(
-      "rinkeby",
-      INFURA_API_KEY_RINKEBY
-    );
+    this.chainId = chainId;
+    if (chainId === 1) {
+      this.provider = new ethers.providers.JsonRpcProvider(
+        "http://localhost:8545"
+      );
+    } else {
+      this.provider = ethers.providers.InfuraProvider.getWebSocketProvider(
+        "rinkeby",
+        INFURA_API_KEY_RINKEBY
+      );
+    }
   }
 
   async connect(): Promise<boolean> {
     this._connection.set({
       accountAddress: this.wallet.address,
-      chainId: 4,
+      chainId: this.chainId,
     });
     return true;
   }
