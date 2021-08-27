@@ -104,6 +104,7 @@
         onSubmit();
       } catch (err) {
         setRecordsInProgress = false;
+
         error.show(
           new error.Error({
             message: err.message,
@@ -115,8 +116,11 @@
         updateNotification.remove();
       }
 
-      await tx.wait(1);
-      waitingForTxNotification.remove();
+      try {
+        await tx.wait(1);
+      } finally {
+        waitingForTxNotification.remove();
+      }
 
       await configureEns.updateScreenAndNotifyUser(
         orgAddress,

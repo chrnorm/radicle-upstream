@@ -101,8 +101,11 @@
         setNameNotification.remove();
       }
 
-      await tx.wait(1);
-      waitingForTxNotification.remove();
+      try {
+        await tx.wait(1);
+      } finally {
+        waitingForTxNotification.remove();
+      }
 
       await configureEns.updateScreenAndNotifyUser(
         orgAddress,
