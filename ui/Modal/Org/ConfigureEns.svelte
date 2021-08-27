@@ -86,6 +86,12 @@
 
   function bindPopulateMetadataDone(domain: string) {
     return () => {
+      // Don't show linkOrgToName step if it is already linked.
+      if (registration?.address?.toLowerCase() === orgAddress.toLowerCase()) {
+        modal.hide();
+        return;
+      }
+
       state = {
         type: "linkOrgToName",
         domain,
